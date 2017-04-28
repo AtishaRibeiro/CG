@@ -1,0 +1,101 @@
+void draw_zbuf_line(ZBuffer &zBuf, img::EasyImage &image, unsigned int x0, unsigned int y0, double z0,
+                    unsigned int x1, unsigned int y1, double z1, img::Color color){
+    assert(x0 < image.get_width() && y0 < image.get_height());
+    assert(x1 < image.get_width() && y1 < image.get_height());
+
+    //firstly, draw (x0,y0) and (x1,y1)
+    if(1/z0 < zBuf(x0, y0)){
+        zBuf(x0, y0) = 1/z0;
+        image(x0, y0) = color;
+    }
+    if(1/z1 < zBuf(x1, y1)){
+        zBuf(x1, y1) = 1/z1;
+        image(x1, y1) = color;
+    }
+    if (x0 == x1){
+        //special case for x0 == x1
+        //draw all pixels inbetween y0 and y1
+        int yMin = std::min(y0, y1);
+        int yMax = std::max(y0, y1);
+        if((yMax - yMin - 2) > 0){
+            // a + 1 is the amount of pixels between y0 and y1
+            int a = yMax - yMin - 2;
+            for (unsigned int i = 0; i <= a; i++){
+                double zi = (i/a)/z1 + (1-(i/a))/z0;
+                if(zi < zBuf(x0, yMin + i + 1)){
+                    zBuf(x0, yMin + i + 1) = zi;
+                    image(x0, yMin + i + 1) = color;
+                }
+            }
+        }
+    }else if (y0 == y1){
+        //special case for y0 == y1
+        //draw all pixels inbetween x0 and x1
+        int xMin = std::min(x0, x1);
+        int xMax = std::max(x0, x1);
+        if(xMax - xMin - 2 > 0){
+            // a + 1 is the amount of pixels between x0 and x1
+            int a = xMax - xMin - 2;
+            for (unsigned int i = 0; i <= a; i++){
+                double zi = (i/a)/z1 + (1-(i/a))/z0;
+                if(zi < zBuf(xMin + i + 1, y0)){
+                    zBuf(xMin + i + 1, y0) = zi;
+                    image(xMin + i + 1, y0) = color;
+                }
+            }
+        }
+    }else{
+        if (x0 > x1){
+            //flip points if x1>x0: we want x0 to have the lowest value
+            std::swap(x0, x1);
+            std::swap(y0, y1);
+            std::swap(z0, z1);
+        }
+        double m = ((double) y1 - (double) y0) / ((double) x1 - (double) x0);
+        if (-1.0 <= m && m <= 1.0){
+            if((int)x1 - (int)x0 - 2 > 0){
+                // a + 1 is the amount of pixels between x0 and x1
+                int a = x1 - x0 - 2;
+                for (unsigned int i = 0; i <= a; i++){
+                    unsigned int x = x0 + i + 1;
+                    unsigned int y = (unsigned int) round(y0 + m * (i+1));
+                    double zi = (i/a)/z1 + (1-(i/a))/z0;
+                    if(zi < zBuf(x, y)){
+                        zBuf(x, y) = zi;
+                        image(x, y) = color;
+                    }
+                }
+            }
+        }
+        else if (m > 1.0){
+            if((int)y1 - (int)y0 - 2 > 0){
+                // a + 1 is the amount of pixels between y1 and y0
+                int a = y1 - y0 - 2;
+                for (int i = 0; i <= a; i++){
+                    unsigned int x = (unsigned int) round(x0 + ((i+1) / m));
+                    unsigned int y = y0 + i + 1;
+                    double zi = ((i+1)/a)/z1 + (1-((i+1)/a))/z0;
+                    if(zi < zBuf(x, y)){
+                        zBuf(x, y) = zi;
+                        image(x, y) = color;
+                    }
+                }
+            }
+        }
+        else if (m < -1.0){
+            if((int)y0 - (int)y1 - 2 > 0){
+                // a + 1 is the amount of pixels between y0 and y1
+                int a = y0 - y1 - 2;
+                for (int i = 0; i <= a; i++){
+                    unsigned int x = (unsigned int) round(x0 - ((i+1) / m));
+                    unsigned int y = y0 - (i + 1);
+                    double zi = (i/a)/z1 + (1-(i/a))/z0;
+                    if(zi < zBuf(x, y)){
+                        zBuf(x, y) = zi;
+                        image(x, y) = color;
+                    }
+                }
+            }
+        }
+    }
+}
