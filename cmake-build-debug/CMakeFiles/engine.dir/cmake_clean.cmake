@@ -5,7 +5,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/engine.dir/ini_configuration.cc.o"
   "CMakeFiles/engine.dir/vector.cc.o"
   "engine.pdb"
-  "engine"
+  "engine.exe"
+  "libengine.dll.a"
 )
 
 # Per-language clean rules from dependency scanning.

@@ -4,11 +4,11 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/home/atisha/Computer Graphics/engine_old/easy_image.cc" "/home/atisha/Computer Graphics/engine_old/cmake-build-debug/CMakeFiles/engine.dir/easy_image.cc.o"
-  "/home/atisha/Computer Graphics/engine_old/engine.cc" "/home/atisha/Computer Graphics/engine_old/cmake-build-debug/CMakeFiles/engine.dir/engine.cc.o"
-  "/home/atisha/Computer Graphics/engine_old/ini_configuration.cc" "/home/atisha/Computer Graphics/engine_old/cmake-build-debug/CMakeFiles/engine.dir/ini_configuration.cc.o"
-  "/home/atisha/Computer Graphics/engine_old/l_parser.cc" "/home/atisha/Computer Graphics/engine_old/cmake-build-debug/CMakeFiles/engine.dir/l_parser.cc.o"
-  "/home/atisha/Computer Graphics/engine_old/vector.cc" "/home/atisha/Computer Graphics/engine_old/cmake-build-debug/CMakeFiles/engine.dir/vector.cc.o"
+  "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/easy_image.cc" "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/cmake-build-debug/CMakeFiles/engine.dir/easy_image.cc.o"
+  "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/engine.cc" "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/cmake-build-debug/CMakeFiles/engine.dir/engine.cc.o"
+  "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/ini_configuration.cc" "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/cmake-build-debug/CMakeFiles/engine.dir/ini_configuration.cc.o"
+  "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/l_parser.cc" "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/cmake-build-debug/CMakeFiles/engine.dir/l_parser.cc.o"
+  "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/vector.cc" "/cygdrive/c/Users/Atisha/Documents/Informatica/CG/cmake-build-debug/CMakeFiles/engine.dir/vector.cc.o"
   )
 set(CMAKE_CXX_COMPILER_ID "GNU")
 

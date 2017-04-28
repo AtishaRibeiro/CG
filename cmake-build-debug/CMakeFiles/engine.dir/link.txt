@@ -1,1 +1,1 @@
-/usr/bin/c++   -g   CMakeFiles/engine.dir/engine.cc.o CMakeFiles/engine.dir/easy_image.cc.o CMakeFiles/engine.dir/l_parser.cc.o CMakeFiles/engine.dir/ini_configuration.cc.o CMakeFiles/engine.dir/vector.cc.o  -o engine 
+/usr/bin/c++.exe  -g  -Wl,--enable-auto-import CMakeFiles/engine.dir/engine.cc.o CMakeFiles/engine.dir/easy_image.cc.o CMakeFiles/engine.dir/l_parser.cc.o CMakeFiles/engine.dir/ini_configuration.cc.o CMakeFiles/engine.dir/vector.cc.o  -o engine.exe -Wl,--out-implib,libengine.dll.a -Wl,--major-image-version,0,--minor-image-version,0 
