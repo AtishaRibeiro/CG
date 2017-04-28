@@ -998,8 +998,8 @@ void draw_zbuf_triag(ZBuffer &zBuf, img::EasyImage &image, Vector3D &A, Vector3D
 }
 
 img::EasyImage draw2DLines(Lines2D &lines, const int size, std::vector<double> bgc,
-                           bool zBuffer = false, bool useLight = false, Lights3D &lights = {},
-                           std::vector<Figure> &figures = {}){
+                           bool zBuffer = false, bool useLight = false, Lights3D lights = {},
+                           std::vector<Figure> figures = {}){
     double xmin = 0.0;
     double xmax = 0.0;
     double ymin = 0.0;
