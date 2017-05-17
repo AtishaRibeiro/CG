@@ -22,15 +22,31 @@ class Line2D;
 
 class ColorDouble{
 public:
+    double red;
+    double green;
+    double blue;
     ColorDouble(){}
     ColorDouble(double r, double g, double b){
         red = r;
         green = g;
         blue = b;
     }
-    double red;
-    double green;
-    double blue;
+    void operator+=(const ColorDouble &c){
+        red = (c.red + red) < 1.0 ? c.red + red : 1.0;
+        green = (c.green + green) < 1.0 ? c.green + green : 1.0;
+        blue = (c.blue + blue) < 1.0 ? c.blue + blue : 1.0;
+    }
+    ColorDouble operator*(const ColorDouble &c){
+        return ColorDouble(red * c.red, green * c.green, blue * c.blue);
+    }
+    ColorDouble operator*(const double d){
+        return ColorDouble(red * d, green * d, blue * d);
+    }
+    void operator*=(const double d){
+        red *= d;
+        green *= d;
+        blue *= d;
+    }
 };
 
 int roundToInt(double d){
@@ -81,6 +97,7 @@ public:
     ColorDouble diffuseReflection;
     ColorDouble specularReflection;
     double reflectionCoefficient;
+    bool reflective = false;
 };
 
 class Light{
@@ -95,8 +112,12 @@ public:
 
 class ZBuffer{
     std::vector<std::vector<double>> zBuffer;
+    unsigned int width;
+    unsigned int height;
 public:
     ZBuffer(const unsigned int width, const unsigned int height){
+        this->width = width;
+        this->height = height;
         double posInf = std::numeric_limits<double>::infinity();
         for(int h = 0; h < height; h++){
             zBuffer.push_back({});
@@ -109,14 +130,84 @@ public:
         //return reference to place in vector, so the value can be modified
         return zBuffer[y].at(x);
     }
+    bool isInRange(unsigned int x, unsigned int y){
+        return (0 <= x and x < width and 0 <= y and y < height);
+    }
+};
+
+class ReflectionImage{
+    std::vector<std::vector<ColorDouble>> image;
+    unsigned int width;
+    unsigned int height;
+public:
+    ReflectionImage(){}
+    ReflectionImage(const unsigned int width, const unsigned int height){
+        this->width = width;
+        this->height = height;
+        for(int h = 0; h < height; h++){
+            image.push_back({});
+            for(int w = 0; w < width; w++){
+                image[h].push_back(ColorDouble(0,0,0));
+            }
+        }
+    }
+    ColorDouble& operator()(unsigned int x, unsigned int y){
+        //return reference to place in vector, so the value can be modified
+        return image[y].at(x);
+    }
+    bool isInRange(unsigned int x, unsigned int y){
+        return (0 <= x and x < width and 0 <= y and y < height);
+    }
 };
 
 typedef std::vector<Light> Lights3D;
 
 typedef std::vector<Figure> Figures3D;
 
+struct ReflectionInfo{
+    //this struct is only here to reduce the amount of parameters for draw_zbuf_triag
+    Vector3D normal;
+    Vector3D trianglePoint;
+    //reflection is true when the triangle that has to be drawn is a reflection
+    //reflective is true when the triangle that has to be drawn is reflective
+    bool reflection = false;
+    bool reflective = false;
+    Figures3D figures;
+    std::vector<double> bgc;
+    ReflectionImage image;
+    ReflectionInfo(){}
+    ReflectionInfo(Vector3D &n, Vector3D &p, unsigned int width, unsigned int height){
+        reflection = true;
+        normal = n;
+        trianglePoint = p;
+        image = ReflectionImage(width, height);
+    }
+    ReflectionInfo(Figures3D &f, std::vector<double> &b){
+        reflective = true;
+        figures = f;
+        bgc = b;
+    }
+};
+
 //======================================================================================================//
 //===============================================3D-Figures=============================================//
+
+Figure createPlane(double width, double height){
+    Figure plane = Figure();
+    std::vector<double> x = {0.0,1.0,1.0,0.0};
+    std::vector<double> y = {0.0,0.0,1.0,1.0};
+    for(int i = 0; i < 4; i++){
+        Vector3D newPoint = Vector3D();
+        newPoint.x = x[i] == 1.0 ? x[i] * width : 0.0;
+        newPoint.y = y[i] == 1.0 ? y[i] * height : 0.0;
+        newPoint.z = 0.0;
+        plane.points.push_back(newPoint);
+    }
+    Face newFace = Face();
+    newFace.point_indexes = {0, 1, 2, 3};
+    plane.faces.push_back(newFace);
+    return plane;
+}
 
 Figure createCube(){
     Figure cube = Figure();
@@ -835,7 +926,8 @@ void draw_zbuf_triag(ZBuffer &zBuf, img::EasyImage &image, Vector3D &A, Vector3D
                      ColorDouble diffuseReflection,
                      ColorDouble specularReflection,
                      double reflectionCoefficient,
-                     Lights3D &lights, bool useLight){
+                     Lights3D &lights, bool useLight,
+                     ReflectionInfo &reflectionInfo){
     Point2D a2D, b2D, c2D;
     a2D.x = (d*A.x/-(A.z)) + dx;
     a2D.y = (d*A.y/-(A.z)) + dy;
@@ -857,35 +949,22 @@ void draw_zbuf_triag(ZBuffer &zBuf, img::EasyImage &image, Vector3D &A, Vector3D
     double zg = 1/(3*A.z) + 1/(3*B.z) + 1/(3*C.z);
     Vector3D u = B - A;
     Vector3D v = C - A;
-    Vector3D w = Vector3D::vector(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x);
+    Vector3D w = u.cross_equals(v);
     Vector3D n = Vector3D::normalise(w);
 
     ColorDouble totalColor(0.0, 0.0, 0.0);
+    ColorDouble tempLight(0.0, 0.0, 0.0);
     Lights3D pointLights;
     Lights3D specularLights;
-    double red, green, blue;
     for(Light &light: lights){
-        red = ambientReflection.red * light.ambientLight.red;
-        green = ambientReflection.green * light.ambientLight.green;
-        blue = ambientReflection.blue * light.ambientLight.blue;
-        totalColor.red = (red + totalColor.red) < 1.0 ? red + totalColor.red : 1.0;
-        totalColor.green = (green + totalColor.green) < 1.0 ? green + totalColor.green : 1.0;
-        totalColor.blue = (blue + totalColor.blue) < 1.0 ? blue + totalColor.blue : 1.0;
+        tempLight = ambientReflection * light.ambientLight;
+        totalColor += tempLight;
         if (light.infinite and useLight){
             Vector3D direction = Vector3D::normalise(-light.vector);
             double cos = (direction.x * n.x) + (direction.y * n.y) + (direction.z * n.z);
-            if(cos > 0) {
-                red = (diffuseReflection.red * light.diffuseLight.red) * cos;
-                green = (diffuseReflection.green * light.diffuseLight.green) * cos;
-                blue = (diffuseReflection.blue * light.diffuseLight.blue) * cos;
-            }else{
-                red = 0.0;
-                green = 0.0;
-                blue = 0.0;
-            }
-            totalColor.red = (red + totalColor.red) < 1.0 ? red + totalColor.red : 1.0;
-            totalColor.green = (green + totalColor.green) < 1.0 ? green + totalColor.green : 1.0;
-            totalColor.blue = (blue + totalColor.blue) < 1.0 ? blue + totalColor.blue : 1.0;
+            cos = cos > 0.0 ? cos : 0.0;
+            tempLight = (diffuseReflection * light.diffuseLight) * cos;
+            totalColor += tempLight;
         }else if(!light.infinite and useLight){
             pointLights.push_back(light);
         }
@@ -895,103 +974,124 @@ void draw_zbuf_triag(ZBuffer &zBuf, img::EasyImage &image, Vector3D &A, Vector3D
     }
     img::Color currentColor = img::Color(totalColor.red*255, totalColor.green*255, totalColor.blue*255);
 
+    //save time by only calculating mirror image if the mirror is visible
+    Vector3D cameraDirection = Vector3D::vector(0, 0, 1);
+    bool visible = n.dot(cameraDirection) > 0;
+
+    ReflectionInfo refInfo;
+    if(reflectionInfo.reflective and visible){
+        ZBuffer triangleZbuf = ZBuffer(image.get_width(), image.get_height());
+        refInfo = ReflectionInfo(n, A, image.get_width(), image.get_height());
+        Lights3D reflectionLights;
+        Vector3D refA, refB, refC;
+
+        //draw every object on the triangle
+        for(Figure &figure: reflectionInfo.figures) {
+            if(!figure.reflective) {
+                for(Vector3D &point: figure.points) {
+                    //mirror everything around triangle
+                    double D = n.dot(A);
+                    point -= (2 * (n) * (point.dot(n) - D));
+                }
+                for(Light &light: lights){
+                    Light reflectionLight = light;
+                    double D = n.dot(A);
+                    reflectionLight.vector -= (2 * (n) * (reflectionLight.vector.dot(n) - D));
+                    reflectionLights.push_back(reflectionLight);
+                }
+                for (Face &face: figure.faces) {
+                    //B = C and C = B because of the reflection
+                    refA = figure.points[face.point_indexes[0]];
+                    refB = figure.points[face.point_indexes[2]];
+                    refC = figure.points[face.point_indexes[1]];
+                    draw_zbuf_triag(triangleZbuf, image, refA, refB, refC, d, dx, dy,
+                                    figure.ambientReflection,
+                                    figure.diffuseReflection,
+                                    figure.specularReflection,
+                                    figure.reflectionCoefficient, reflectionLights, useLight, refInfo);
+                }
+            }
+        }
+    }
+
     double k = w.x*A.x + w.y*A.y + w.z*A.z;
-    if(k == 0){
-        //the triangle has to be drawn as a line
-        unsigned int x0 = roundToInt(std::min(std::min(a2D.x, b2D.x), c2D.x));
-        unsigned int y0 = roundToInt(std::min(std::min(a2D.y, b2D.y), c2D.y));
-        unsigned int x1 = roundToInt(std::max(std::max(a2D.x, b2D.x), c2D.x));
-        unsigned int y1 = roundToInt(std::max(std::max(a2D.y, b2D.y), c2D.y));
-        double z0, z1;
-        //find the appropriate z0
-        if(x0 == a2D.x){z0 = A.z;}
-        else if(x0 == b2D.x){z0 = B.z;}
-        else{z0 = C.z;}
-        //find the appropriate z1
-        if(x1 == a2D.x){z1 = A.z;}
-        else if(x1 == b2D.x){z1 = B.z;}
-        else{z1 = C.z;}
-        draw_zbuf_line(zBuf, image, x0, y0, z0, x1, y1, z1, currentColor);
-    }else{
-        double dzdx = w.x/(-d*k);
-        double dzdy = w.y/(-d*k);
-        //zi is the 1/z value of the current pixel
-        double zi;
-        for(int yi = yMin; yi <= yMax; yi++){
-            xlAB = xlAC = xlBC = posInf;
-            xrAB = xrAC = xrBC = negInf;
-            if((yi - a2D.y)*(yi - b2D.y) <= 0 and a2D.y != b2D.y){
-                xlAB = xrAB = a2D.x + (b2D.x - a2D.x)*((yi - a2D.y)/(b2D.y - a2D.y));
+    double dzdx = w.x/(-d*k);
+    double dzdy = w.y/(-d*k);
+    //zi is the 1/z value of the current pixel
+    double zi;
+    for(int yi = yMin; yi <= yMax; yi++){
+        if(reflectionInfo.reflection and yi > image.get_height()){break;}
+        xlAB = xlAC = xlBC = posInf;
+        xrAB = xrAC = xrBC = negInf;
+        if((yi - a2D.y)*(yi - b2D.y) <= 0 and a2D.y != b2D.y){
+            xlAB = xrAB = a2D.x + (b2D.x - a2D.x)*((yi - a2D.y)/(b2D.y - a2D.y));
+        }
+        if((yi - a2D.y)*(yi - c2D.y) <= 0 and a2D.y != c2D.y){
+            xlAC = xrAC = a2D.x + (c2D.x - a2D.x)*((yi - a2D.y)/(c2D.y - a2D.y));
+        }
+        if((yi - b2D.y)*(yi - c2D.y) <= 0 and b2D.y != c2D.y){
+            xlBC = xrBC = b2D.x + (c2D.x - b2D.x)*((yi - b2D.y)/(c2D.y - b2D.y));
+        }
+        xl = roundToInt(std::min(std::min(xlAB, xlAC), xlBC) + 0.5);
+        xr = roundToInt(std::max(std::max(xrAB, xrAC), xrBC) - 0.5);
+        for(int x = xl; x <= xr; x++){
+            zi = 1.0001*zg + ((double)x - xg)*dzdx + ((double)yi - yg)*dzdy;
+            ColorDouble diffuseSpecularLight = totalColor;
+            if(reflectionInfo.reflective and visible){
+                tempLight = refInfo.image(x, yi);
+                diffuseSpecularLight += tempLight;
             }
-            if((yi - a2D.y)*(yi - c2D.y) <= 0 and a2D.y != c2D.y){
-                xlAC = xrAC = a2D.x + (c2D.x - a2D.x)*((yi - a2D.y)/(c2D.y - a2D.y));
-            }
-            if((yi - b2D.y)*(yi - c2D.y) <= 0 and b2D.y != c2D.y){
-                xlBC = xrBC = b2D.x + (c2D.x - b2D.x)*((yi - b2D.y)/(c2D.y - b2D.y));
-            }
-            xl = roundToInt(std::min(std::min(xlAB, xlAC), xlBC) + 0.5);
-            xr = roundToInt(std::max(std::max(xrAB, xrAC), xrBC) - 0.5);
-            for(int x = xl; x <= xr; x++){
-                zi = 1.0001*zg + (x - xg)*dzdx + (yi - yg)*dzdy;
-                ColorDouble diffuseSpecularLight = totalColor;
-                if(useLight){
-                    double ziEye = 1.0/zi;
-                    double coordEyeX = (x - dx) * (-ziEye) / d;
-                    double coordEyeY = (yi - dy) * (-ziEye) / d;
-                    Vector3D point = Vector3D::point(coordEyeX, coordEyeY, ziEye);
-                    double cos;
-                    Vector3D l;
-                    for(Light &light: pointLights){
+            double ziEye = 1.0/zi;
+            double coordEyeX = (x - dx) * (-ziEye) / d;
+            double coordEyeY = (yi - dy) * (-ziEye) / d;
+            Vector3D point = Vector3D::point(coordEyeX, coordEyeY, ziEye);
+            if(useLight and visible){
+                double cos;
+                Vector3D l;
+                for(Light &light: pointLights){
+                    l = Vector3D::normalise(light.vector - point);
+                    cos = l.dot(n);
+                    cos = cos > 0.0 ? cos : 0.0;
+                    tempLight = (diffuseReflection * light.diffuseLight) * cos;
+                    diffuseSpecularLight += tempLight;
+                }
+                for(Light &light: specularLights){
+                    if(light.infinite){
+                        l = Vector3D::normalise(-light.vector);
+                    }else{
                         l = Vector3D::normalise(light.vector - point);
-                        cos = l.dot(n);
-                        if(cos > 0) {
-                            red = (diffuseReflection.red * light.diffuseLight.red) * cos;
-                            green = (diffuseReflection.green * light.diffuseLight.green) * cos;
-                            blue = (diffuseReflection.blue * light.diffuseLight.blue) * cos;
-                        }else{
-                            red = 0.0;
-                            green = 0.0;
-                            blue = 0.0;
-                        }
-                        diffuseSpecularLight.red = (red + diffuseSpecularLight.red) < 1.0 ?
-                                                   red + diffuseSpecularLight.red : 1.0;
-                        diffuseSpecularLight.green = (green + diffuseSpecularLight.green) < 1.0 ?
-                                                     green + diffuseSpecularLight.green : 1.0;
-                        diffuseSpecularLight.blue = (blue + diffuseSpecularLight.blue) < 1.0 ?
-                                                    blue + diffuseSpecularLight.blue : 1.0;
                     }
-                    for(Light &light: specularLights){
-                        if(light.infinite){
-                            l = Vector3D::normalise(-light.vector);
-                        }else{
-                            l = Vector3D::normalise(light.vector - point);
-                        }
-                        cos = l.dot(n);
+                    cos = n.dot(l);
+                    if(cos > 0){
                         Vector3D r = Vector3D::normalise((2 * cos * n) - l);
-                        Vector3D camera = Vector3D::normalise(Vector3D::point(0.0,0.0,0.0) - point);
-                        double beta = std::pow(camera.dot(r), reflectionCoefficient);
-                        if(cos > 0 and beta > 0){
-                            red = (specularReflection.red * light.specularLight.red) * beta;
-                            green = (specularReflection.green * light.specularLight.green) * beta;
-                            blue = (specularReflection.blue * light.specularLight.blue) * beta;
-                        }else{
-                            red = 0.0;
-                            green = 0.0;
-                            blue = 0.0;
-                        }
-                        diffuseSpecularLight.red = (red + diffuseSpecularLight.red) < 1.0 ?
-                                                   red + diffuseSpecularLight.red : 1.0;
-                        diffuseSpecularLight.green = (green + diffuseSpecularLight.green) < 1.0 ?
-                                                     green + diffuseSpecularLight.green : 1.0;
-                        diffuseSpecularLight.blue = (blue + diffuseSpecularLight.blue) < 1.0 ?
-                                                    blue + diffuseSpecularLight.blue : 1.0;
+                        Vector3D camera = Vector3D::normalise(-point);
+                        double beta = r.dot(camera);
+                        beta = beta < 0 ? 0 : beta;
+                        beta = std::pow(beta, reflectionCoefficient);
+                        tempLight = (specularReflection * light.specularLight) * beta;
+                        diffuseSpecularLight += tempLight;
                     }
-                    currentColor = img::Color(diffuseSpecularLight.red*255, diffuseSpecularLight.green*255, diffuseSpecularLight.blue*255);
+                }
+                currentColor = img::Color(diffuseSpecularLight.red*255, diffuseSpecularLight.green*255, diffuseSpecularLight.blue*255);
+            }
+            if(reflectionInfo.reflection){
+                if(!zBuf.isInRange(x, yi)){
+                    continue;
+                }
+                if(reflectionInfo.normal.dot(point - reflectionInfo.trianglePoint) > 0) {
+                    continue;
                 }
                 if(zi < zBuf(x, yi)){
                     zBuf(x, yi) = zi;
-                    image(x, yi) = currentColor;
+                    reflectionInfo.image(x, yi) =  diffuseSpecularLight;
+                    //uncomment line below and comment line above for some fun
+                    //image(x, yi) = currentColor;
                 }
+                continue;
+            }
+            if(zi < zBuf(x, yi)) {
+                zBuf(x, yi) = zi;
+                image(x, yi) = currentColor;
             }
         }
     }
@@ -999,7 +1099,7 @@ void draw_zbuf_triag(ZBuffer &zBuf, img::EasyImage &image, Vector3D &A, Vector3D
 
 img::EasyImage draw2DLines(Lines2D &lines, const int size, std::vector<double> bgc,
                            bool zBuffer = false, bool useLight = false, Lights3D lights = {},
-                           std::vector<Figure> figures = {}){
+                           Figures3D figures = {}){
     double xmin = 0.0;
     double xmax = 0.0;
     double ymin = 0.0;
@@ -1046,12 +1146,16 @@ img::EasyImage draw2DLines(Lines2D &lines, const int size, std::vector<double> b
                 Vector3D A = figure.points[face.point_indexes[0]];
                 Vector3D B = figure.points[face.point_indexes[1]];
                 Vector3D C = figure.points[face.point_indexes[2]];
+                ReflectionInfo refInfo = ReflectionInfo();
+                if(figure.reflective){
+                    refInfo = ReflectionInfo(figures, bgc);
+                }
                 draw_zbuf_triag(zBuf, image, A, B, C, d, dX, dY,
                                 figure.ambientReflection,
                                 figure.diffuseReflection,
                                 figure.specularReflection,
                                 figure.reflectionCoefficient,
-                                lights, useLight);
+                                lights, useLight, refInfo);
             }
         }
     }else if(zBuffer){
@@ -1273,6 +1377,10 @@ img::EasyImage generate_image(const ini::Configuration &configuration){
                     line.point_indexes = lines;
                     currentFigure.faces.push_back(line);
                 }
+            }else if(figureType == "Plane"){
+                double width = configuration[figureString]["width"];
+                double height = configuration[figureString]["height"];
+                currentFigure = createPlane(width, height);
             }else if(figureType == "Cube"){
                 currentFigure = createCube();
             }else if(figureType == "Tetrahedron"){
@@ -1339,7 +1447,6 @@ img::EasyImage generate_image(const ini::Configuration &configuration){
                 std::cerr << figureType << " is an invalid type\n";
                 continue;
             }
-
             //set color
             ColorDouble color, ambientRef, diffuseRef, specularRef;
             bool useSpecular = false;
@@ -1380,6 +1487,12 @@ img::EasyImage generate_image(const ini::Configuration &configuration){
                         fig.specularReflection = specularRef;
                         if(useSpecular){fig.reflectionCoefficient = reflectionCoefficient;}
                     }
+                    //check if reflective
+                    try{
+                        fig.reflective = configuration[figureString]["reflective"];
+                        fig.ambientReflection *= 0;
+                        fig.diffuseReflection *= 0;
+                    }catch(ini::NonexistentEntry){}
                     applyTransformation(fig, transformationMatrix);
                     figures.push_back(fig);
                 }
@@ -1391,9 +1504,18 @@ img::EasyImage generate_image(const ini::Configuration &configuration){
                     currentFigure.specularReflection = specularRef;
                     if(useSpecular){currentFigure.reflectionCoefficient = reflectionCoefficient;}
                 }
+                //check if reflective
+                try{
+                    currentFigure.reflective = configuration[figureString]["reflective"];
+                    currentFigure.ambientReflection = ColorDouble(0.025,0.025,0.025);
+                    currentFigure.diffuseReflection = ColorDouble(0.05,0.05,0.05);
+                    currentFigure.specularReflection = ColorDouble(1,1,1);
+                    currentFigure.reflectionCoefficient = 100;
+                }catch(ini::NonexistentEntry){}
                 applyTransformation(currentFigure, transformationMatrix);
                 figures.push_back(currentFigure);
             }
+
         }
 
         applyTransformation(figures, eyePMatrix);
